@@ -12,6 +12,12 @@ The project combines a relational PostgreSQL data layer with automated Python ET
 
 The goal is to demonstrate how raw financial transaction data can be transformed into reliable business intelligence and operational monitoring tools.
 
+## System Architecture
+
+![FinPay Analytics Architecture](docs/architecture.png)
+
+The platform follows a layered architecture combining PostgreSQL, Python ETL, SQL analytics, Power BI, FastAPI, Streamlit, and Docker.
+
 
 
 ## Business Problem
