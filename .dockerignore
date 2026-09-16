@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+*.pyc
+data/
+notebooks/
+tests/
+dashboards/
+.git/
+.gitignore
+.env
+*.pbix
+*.csv
+*.log

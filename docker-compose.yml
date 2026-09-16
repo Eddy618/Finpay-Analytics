@@ -1,0 +1,25 @@
+services:
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: finpay-api
+    env_file:
+      - .env
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+  streamlit:
+    build:
+      context: .
+      dockerfile: Dockerfile.streamlit
+    container_name: finpay-streamlit
+    environment:
+      API_URL: http://api:8000
+    ports:
+      - "8501:8501"
+    depends_on:
+      - api
+    restart: unless-stopped
