@@ -1,40 +1,8 @@
-import os
-
-from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Query
-from sqlalchemy import create_engine, text
+from sqlalchemy import text
 
-
-load_dotenv()
-
-
-# ============================================================
-# DATABASE CONNECTION
-# ============================================================
-
-def get_database_engine():
-    """Create PostgreSQL database connection."""
-
-    host = os.getenv("DB_HOST", "localhost")
-    port = os.getenv("DB_PORT", "5432")
-    database = os.getenv("DB_NAME")
-    user = os.getenv("DB_USER")
-    password = os.getenv("DB_PASSWORD")
-
-    if not all([database, user, password]):
-        raise ValueError(
-            "Database configuration is missing from .env"
-        )
-
-    connection_url = (
-        f"postgresql+psycopg2://"
-        f"{user}:{password}@{host}:{port}/{database}"
-    )
-
-    return create_engine(connection_url)
-
-
-engine = get_database_engine()
+from api.database import engine
+from api.payments import router as payments_router
 
 
 # ============================================================
@@ -43,13 +11,17 @@ engine = get_database_engine()
 
 app = FastAPI(
     title="FinPay Analytics API",
-    description="FinPay transaction analytics and risk API",
+    description="FinPay transaction analytics, risk, reconciliation, and payments API",
     version="1.0.0",
 )
 
 
+# Register payment routes
+app.include_router(payments_router)
+
+
 # ============================================================
-# HEALTH CHECK
+# ROOT
 # ============================================================
 
 @app.get("/")
@@ -60,6 +32,10 @@ def root():
         "version": "1.0.0",
     }
 
+
+# ============================================================
+# HEALTH CHECK
+# ============================================================
 
 @app.get("/health")
 def health_check():
@@ -100,17 +76,27 @@ def get_kpis():
         FROM public.vw_executive_kpis;
     """)
 
-    with engine.connect() as connection:
-        result = connection.execute(query)
-        row = result.mappings().first()
+    try:
+        with engine.connect() as connection:
+            result = connection.execute(query)
+            row = result.mappings().first()
 
-    if row is None:
+        if row is None:
+            raise HTTPException(
+                status_code=404,
+                detail="KPI data not found.",
+            )
+
+        return dict(row)
+
+    except HTTPException:
+        raise
+
+    except Exception as error:
         raise HTTPException(
-            status_code=404,
-            detail="KPI data not found.",
+            status_code=500,
+            detail=f"KPI query failed: {error}",
         )
-
-    return dict(row)
 
 
 # ============================================================
@@ -119,13 +105,19 @@ def get_kpis():
 
 @app.get("/transactions")
 def get_transactions(
-    limit: int = Query(default=100, ge=1, le=1000),
+    limit: int = Query(
+        default=100,
+        ge=1,
+        le=1000,
+    ),
     status: str | None = None,
     transaction_type: str | None = None,
 ):
 
     conditions = []
-    params = {"limit": limit}
+    params = {
+        "limit": limit,
+    }
 
     if status:
         conditions.append(
@@ -166,16 +158,23 @@ def get_transactions(
         LIMIT :limit;
     """)
 
-    with engine.connect() as connection:
-        result = connection.execute(
-            query,
-            params,
-        )
+    try:
+        with engine.connect() as connection:
+            result = connection.execute(
+                query,
+                params,
+            )
 
-        return [
-            dict(row)
-            for row in result.mappings()
-        ]
+            return [
+                dict(row)
+                for row in result.mappings()
+            ]
+
+    except Exception as error:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Transaction query failed: {error}",
+        )
 
 
 # ============================================================
@@ -184,7 +183,11 @@ def get_transactions(
 
 @app.get("/anomalies")
 def get_anomalies(
-    limit: int = Query(default=100, ge=1, le=1000),
+    limit: int = Query(
+        default=100,
+        ge=1,
+        le=1000,
+    ),
 ):
 
     query = text("""
@@ -205,16 +208,23 @@ def get_anomalies(
         LIMIT :limit;
     """)
 
-    with engine.connect() as connection:
-        result = connection.execute(
-            query,
-            {"limit": limit},
-        )
+    try:
+        with engine.connect() as connection:
+            result = connection.execute(
+                query,
+                {"limit": limit},
+            )
 
-        return [
-            dict(row)
-            for row in result.mappings()
-        ]
+            return [
+                dict(row)
+                for row in result.mappings()
+            ]
+
+    except Exception as error:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Anomaly query failed: {error}",
+        )
 
 
 # ============================================================
@@ -223,7 +233,11 @@ def get_anomalies(
 
 @app.get("/reconciliation")
 def get_reconciliation(
-    limit: int = Query(default=100, ge=1, le=1000),
+    limit: int = Query(
+        default=100,
+        ge=1,
+        le=1000,
+    ),
 ):
 
     query = text("""
@@ -242,16 +256,23 @@ def get_reconciliation(
         LIMIT :limit;
     """)
 
-    with engine.connect() as connection:
-        result = connection.execute(
-            query,
-            {"limit": limit},
-        )
+    try:
+        with engine.connect() as connection:
+            result = connection.execute(
+                query,
+                {"limit": limit},
+            )
 
-        return [
-            dict(row)
-            for row in result.mappings()
-        ]
+            return [
+                dict(row)
+                for row in result.mappings()
+            ]
+
+    except Exception as error:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Reconciliation query failed: {error}",
+        )
 
 
 # ============================================================
@@ -289,7 +310,8 @@ def get_channels():
             status_code=500,
             detail=f"Channel query failed: {error}",
         )
-        
+
+
 # ============================================================
 # PARTNER PERFORMANCE
 # ============================================================
@@ -312,10 +334,17 @@ def get_partners():
         ORDER BY total_transaction_value DESC;
     """)
 
-    with engine.connect() as connection:
-        result = connection.execute(query)
+    try:
+        with engine.connect() as connection:
+            result = connection.execute(query)
 
-        return [
-            dict(row)
-            for row in result.mappings()
-        ]
+            return [
+                dict(row)
+                for row in result.mappings()
+            ]
+
+    except Exception as error:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Partner query failed: {error}",
+        )
