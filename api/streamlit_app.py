@@ -1,6 +1,8 @@
-import requests
+import os
+
 import pandas as pd
 import plotly.express as px
+import requests
 import streamlit as st
 
 
@@ -20,8 +22,6 @@ st.set_page_config(
 # CONFIGURATION
 # ============================================================
 
-import os
-
 API_URL = os.getenv(
     "API_URL",
     "http://127.0.0.1:8000",
@@ -29,48 +29,11 @@ API_URL = os.getenv(
 
 
 # ============================================================
-# CUSTOM CSS
+# API HELPERS
 # ============================================================
 
-st.markdown(
-    """
-    <style>
-        .main-title {
-            font-size: 2.4rem;
-            font-weight: 700;
-            margin-bottom: 0;
-        }
-
-        .subtitle {
-            font-size: 1rem;
-            color: #6b7280;
-            margin-bottom: 1.5rem;
-        }
-
-        .section-title {
-            font-size: 1.4rem;
-            font-weight: 600;
-            margin-top: 1rem;
-        }
-
-        div[data-testid="stMetric"] {
-            padding: 12px;
-            border-radius: 10px;
-            border: 1px solid #e5e7eb;
-        }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
-
-
-# ============================================================
-# API HELPER
-# ============================================================
-
-@st.cache_data(ttl=60)
 def fetch_api(endpoint: str):
-    """Fetch data from the FastAPI backend."""
+    """GET request to FastAPI."""
 
     try:
         response = requests.get(
@@ -84,21 +47,71 @@ def fetch_api(endpoint: str):
 
     except requests.exceptions.ConnectionError:
         st.error(
-            "Unable to connect to the FinPay API. "
-            "Make sure FastAPI is running on port 8000."
+            f"Cannot connect to FastAPI at {API_URL}."
         )
         return None
 
     except requests.exceptions.Timeout:
-        st.error("The FinPay API request timed out.")
+        st.error("FastAPI request timed out.")
         return None
 
     except requests.exceptions.HTTPError as error:
-        st.error(f"API returned an error: {error}")
+        st.error(
+            f"FastAPI returned an error: {error}"
+        )
         return None
 
     except requests.exceptions.RequestException as error:
-        st.error(f"API request failed: {error}")
+        st.error(
+            f"API request failed: {error}"
+        )
+        return None
+
+
+def post_api(endpoint: str, payload: dict):
+    """POST request to FastAPI."""
+
+    try:
+        response = requests.post(
+            f"{API_URL}{endpoint}",
+            json=payload,
+            timeout=20,
+        )
+
+        response.raise_for_status()
+
+        return response.json()
+
+    except requests.exceptions.ConnectionError:
+        st.error(
+            f"Cannot connect to FastAPI at {API_URL}."
+        )
+        return None
+
+    except requests.exceptions.Timeout:
+        st.error("FastAPI request timed out.")
+        return None
+
+    except requests.exceptions.HTTPError as error:
+
+        try:
+            error_detail = response.json().get(
+                "detail",
+                str(error),
+            )
+        except Exception:
+            error_detail = str(error)
+
+        st.error(
+            f"Payment API error: {error_detail}"
+        )
+
+        return None
+
+    except requests.exceptions.RequestException as error:
+        st.error(
+            f"API request failed: {error}"
+        )
         return None
 
 
@@ -107,20 +120,22 @@ def fetch_api(endpoint: str):
 # ============================================================
 
 st.markdown(
-    '<div class="main-title">FinPay Analytics</div>',
+    """
+    <h1 style="margin-bottom:0;">
+        FinPay Analytics
+    </h1>
+    """,
     unsafe_allow_html=True,
 )
 
-st.markdown(
-    '<div class="subtitle">'
-    "Financial transaction intelligence, operations and risk monitoring"
-    "</div>",
-    unsafe_allow_html=True,
+st.caption(
+    "Financial transaction intelligence, operations, risk, "
+    "reconciliation, and payments platform"
 )
 
 
 # ============================================================
-# SIDEBAR NAVIGATION
+# SIDEBAR
 # ============================================================
 
 st.sidebar.title("FinPay")
@@ -135,6 +150,9 @@ page = st.sidebar.radio(
         "Reconciliation",
         "Channels",
         "Partners",
+        "Payments",
+        "Payment History",
+        "Payment Analytics",
     ],
 )
 
@@ -150,10 +168,6 @@ if page == "Executive Overview":
     kpis = fetch_api("/kpis")
 
     if kpis:
-
-        # ----------------------------------------------------
-        # KPI CARDS
-        # ----------------------------------------------------
 
         col1, col2, col3, col4 = st.columns(4)
 
@@ -179,92 +193,57 @@ if page == "Executive Overview":
 
         st.divider()
 
-        # ----------------------------------------------------
-        # STATUS SUMMARY
-        # ----------------------------------------------------
-
         st.subheader("Transaction Status")
 
-        status1, status2, status3, status4 = st.columns(4)
+        s1, s2, s3, s4 = st.columns(4)
 
-        status1.metric(
+        s1.metric(
             "Successful",
             f"{int(kpis['successful_transactions']):,}",
         )
 
-        status2.metric(
+        s2.metric(
             "Failed",
             f"{int(kpis['failed_transactions']):,}",
         )
 
-        status3.metric(
+        s3.metric(
             "Pending",
             f"{int(kpis['pending_transactions']):,}",
         )
 
-        status4.metric(
+        s4.metric(
             "Refunded",
             f"{int(kpis['refunded_transactions']):,}",
         )
 
         st.divider()
 
-        # ----------------------------------------------------
-        # CHANNEL + PARTNER DATA
-        # ----------------------------------------------------
-
         channels = fetch_api("/channels")
-        partners = fetch_api("/partners")
 
         if channels:
 
             channel_df = pd.DataFrame(channels)
 
-            st.subheader("Transaction Value by Channel")
+            st.subheader(
+                "Transaction Value by Channel"
+            )
 
-            fig_channel = px.bar(
+            fig = px.bar(
                 channel_df,
                 x="channel_name",
                 y="total_transaction_value",
                 title="Transaction Value by Channel",
             )
 
-            fig_channel.update_layout(
-                xaxis_title="Payment Channel",
-                yaxis_title="Transaction Value",
-            )
-
             st.plotly_chart(
-                fig_channel,
-                use_container_width=True,
-            )
-
-        if partners:
-
-            partner_df = pd.DataFrame(partners)
-
-            st.subheader("Transaction Value by Partner")
-
-            fig_partner = px.bar(
-                partner_df,
-                x="partner_name",
-                y="total_transaction_value",
-                title="Transaction Value by Partner",
-            )
-
-            fig_partner.update_layout(
-                xaxis_title="Partner",
-                yaxis_title="Transaction Value",
-            )
-
-            st.plotly_chart(
-                fig_partner,
+                fig,
                 use_container_width=True,
             )
 
 
 # ============================================================
-# TRANSACTION EXPLORER
+# TRANSACTIONS
 # ============================================================
 
 elif page == "Transactions":
@@ -274,6 +253,7 @@ elif page == "Transactions":
     col1, col2 = st.columns(2)
 
     with col1:
+
         status = st.selectbox(
             "Transaction Status",
             [
@@ -286,6 +266,7 @@ elif page == "Transactions":
         )
 
     with col2:
+
         transaction_type = st.selectbox(
             "Transaction Type",
             [
@@ -305,38 +286,41 @@ elif page == "Transactions":
         step=10,
     )
 
-    endpoint = f"/transactions?limit={limit}"
+    endpoint = (
+        f"/transactions?limit={limit}"
+    )
 
     params = []
 
     if status != "All":
+
         params.append(
             f"status={status}"
         )
 
     if transaction_type != "All":
+
         params.append(
             f"transaction_type={transaction_type}"
         )
 
     if params:
+
         endpoint += "&" + "&".join(params)
 
-    transactions = fetch_api(endpoint)
+    data = fetch_api(endpoint)
 
-    if transactions:
+    if data is not None:
 
-        transaction_df = pd.DataFrame(
-            transactions
-        )
+        df = pd.DataFrame(data)
 
         st.metric(
             "Transactions Returned",
-            f"{len(transaction_df):,}",
+            f"{len(df):,}",
         )
 
         st.dataframe(
-            transaction_df,
+            df,
             use_container_width=True,
             hide_index=True,
         )
@@ -361,7 +345,7 @@ elif page == "Operations":
 
         with col1:
 
-            fig_volume = px.bar(
+            fig = px.bar(
                 channel_df,
                 x="channel_name",
                 y="total_transactions",
@@ -369,13 +353,13 @@ elif page == "Operations":
             )
 
             st.plotly_chart(
-                fig_volume,
+                fig,
                 use_container_width=True,
             )
 
         with col2:
 
-            fig_success = px.bar(
+            fig = px.bar(
                 channel_df,
                 x="channel_name",
                 y="success_rate",
@@ -383,7 +367,7 @@ elif page == "Operations":
             )
 
             st.plotly_chart(
-                fig_success,
+                fig,
                 use_container_width=True,
             )
 
@@ -395,7 +379,7 @@ elif page == "Operations":
 
         with col1:
 
-            fig_partner_volume = px.bar(
+            fig = px.bar(
                 partner_df,
                 x="partner_name",
                 y="total_transactions",
@@ -403,13 +387,13 @@ elif page == "Operations":
             )
 
             st.plotly_chart(
-                fig_partner_volume,
+                fig,
                 use_container_width=True,
             )
 
         with col2:
 
-            fig_partner_success = px.bar(
+            fig = px.bar(
                 partner_df,
                 x="partner_name",
                 y="success_rate",
@@ -417,7 +401,7 @@ elif page == "Operations":
             )
 
             st.plotly_chart(
-                fig_partner_success,
+                fig,
                 use_container_width=True,
             )
 
@@ -430,126 +414,67 @@ elif page == "Anomalies":
 
     st.header("Risk & Anomaly Monitoring")
 
-    anomalies = fetch_api(
+    data = fetch_api(
         "/anomalies?limit=1000"
     )
 
-    if anomalies:
+    if data is not None:
 
-        anomaly_df = pd.DataFrame(
-            anomalies
-        )
+        df = pd.DataFrame(data)
 
-        # ----------------------------------------------------
-        # SUMMARY
-        # ----------------------------------------------------
-
-        col1, col2, col3 = st.columns(3)
-
-        col1.metric(
+        st.metric(
             "Investigation Records",
-            f"{len(anomaly_df):,}",
+            f"{len(df):,}",
         )
 
-        if "amount" in anomaly_df.columns:
+        if not df.empty:
 
-            total_value = anomaly_df["amount"].sum()
+            if "amount" in df.columns:
 
-            col2.metric(
-                "Anomaly Transaction Value",
-                f"₦{total_value:,.2f}",
-            )
-
-        if "transaction_anomaly" in anomaly_df.columns:
-
-            category_count = (
-                anomaly_df["transaction_anomaly"]
-                .nunique()
-            )
-
-            col3.metric(
-                "Anomaly Categories",
-                f"{category_count:,}",
-            )
-
-        st.divider()
-
-        # ----------------------------------------------------
-        # ANOMALY CATEGORY CHART
-        # ----------------------------------------------------
-
-        if "transaction_anomaly" in anomaly_df.columns:
-
-            category_df = (
-                anomaly_df
-                .groupby(
-                    "transaction_anomaly",
-                    as_index=False
+                st.metric(
+                    "Anomaly Transaction Value",
+                    f"₦{df['amount'].sum():,.2f}",
                 )
-                .size()
-                .rename(
-                    columns={
-                        "size": "transaction_count"
-                    }
+
+            if "transaction_anomaly" in df.columns:
+
+                summary = (
+                    df.groupby(
+                        "transaction_anomaly"
+                    )
+                    .size()
+                    .reset_index(
+                        name="transaction_count"
+                    )
                 )
+
+                fig = px.bar(
+                    summary,
+                    x="transaction_anomaly",
+                    y="transaction_count",
+                    title="Anomalies by Category",
+                )
+
+                st.plotly_chart(
+                    fig,
+                    use_container_width=True,
+                )
+
+            st.subheader(
+                "Anomaly Investigation Queue"
             )
 
-            fig_anomaly = px.bar(
-                category_df,
-                x="transaction_anomaly",
-                y="transaction_count",
-                title="Anomalies by Category",
-            )
-
-            st.plotly_chart(
-                fig_anomaly,
+            st.dataframe(
+                df,
                 use_container_width=True,
+                hide_index=True,
             )
-
-        # ----------------------------------------------------
-        # FILTER
-        # ----------------------------------------------------
-
-        if "transaction_anomaly" in anomaly_df.columns:
-
-            categories = sorted(
-                anomaly_df[
-                    "transaction_anomaly"
-                ]
-                .dropna()
-                .unique()
-                .tolist()
-            )
-
-            selected_category = st.multiselect(
-                "Filter anomaly category",
-                categories,
-                default=categories,
-            )
-
-            filtered_df = anomaly_df[
-                anomaly_df[
-                    "transaction_anomaly"
-                ].isin(selected_category)
-            ]
 
         else:
 
-            filtered_df = anomaly_df
-
-        # ----------------------------------------------------
-        # INVESTIGATION TABLE
-        # ----------------------------------------------------
-
-        st.subheader(
-            "Anomaly Investigation Queue"
-        )
-
-        st.dataframe(
-            filtered_df,
-            use_container_width=True,
-            hide_index=True,
-        )
+            st.success(
+                "No anomaly records were returned."
+            )
 
 
 # ============================================================
@@ -560,103 +485,60 @@ elif page == "Reconciliation":
 
     st.header("Financial Reconciliation")
 
-    reconciliation = fetch_api(
+    data = fetch_api(
         "/reconciliation?limit=1000"
     )
 
-    if reconciliation:
+    if data is not None:
 
-        reconciliation_df = pd.DataFrame(
-            reconciliation
-        )
-
-        # ----------------------------------------------------
-        # SUMMARY
-        # ----------------------------------------------------
+        df = pd.DataFrame(data)
 
         st.metric(
-            "Investigation Records",
-            f"{len(reconciliation_df):,}",
+            "Reconciliation Exceptions",
+            f"{len(df):,}",
         )
 
-        if (
-            "reconciliation_status"
-            in reconciliation_df.columns
-        ):
+        if not df.empty:
 
-            summary_df = (
-                reconciliation_df
-                .groupby(
-                    "reconciliation_status",
-                    as_index=False
+            if "reconciliation_status" in df.columns:
+
+                summary = (
+                    df.groupby(
+                        "reconciliation_status"
+                    )
+                    .size()
+                    .reset_index(
+                        name="transaction_count"
+                    )
                 )
-                .size()
-                .rename(
-                    columns={
-                        "size": "transaction_count"
-                    }
+
+                fig = px.pie(
+                    summary,
+                    names="reconciliation_status",
+                    values="transaction_count",
+                    title="Reconciliation Exceptions",
                 )
+
+                st.plotly_chart(
+                    fig,
+                    use_container_width=True,
+                )
+
+            st.subheader(
+                "Reconciliation Investigation Queue"
             )
 
-            fig_reconciliation = px.pie(
-                summary_df,
-                names="reconciliation_status",
-                values="transaction_count",
-                title="Reconciliation Exceptions",
-            )
-
-            st.plotly_chart(
-                fig_reconciliation,
+            st.dataframe(
+                df,
                 use_container_width=True,
+                hide_index=True,
             )
-
-        # ----------------------------------------------------
-        # FILTER
-        # ----------------------------------------------------
-
-        if (
-            "reconciliation_status"
-            in reconciliation_df.columns
-        ):
-
-            statuses = sorted(
-                reconciliation_df[
-                    "reconciliation_status"
-                ]
-                .dropna()
-                .unique()
-                .tolist()
-            )
-
-            selected_status = st.multiselect(
-                "Reconciliation status",
-                statuses,
-                default=statuses,
-            )
-
-            filtered_df = reconciliation_df[
-                reconciliation_df[
-                    "reconciliation_status"
-                ].isin(selected_status)
-            ]
 
         else:
 
-            filtered_df = reconciliation_df
-
-        # ----------------------------------------------------
-        # TABLE
-        # ----------------------------------------------------
-
-        st.subheader(
-            "Reconciliation Investigation Queue"
-        )
-
-        st.dataframe(
-            filtered_df,
-            use_container_width=True,
-            hide_index=True,
-        )
+            st.success(
+                "No reconciliation exceptions were returned."
+            )
 
 
 # ============================================================
@@ -667,76 +549,62 @@ elif page == "Channels":
 
     st.header("Payment Channel Performance")
 
-    channels = fetch_api("/channels")
+    data = fetch_api("/channels")
 
-    if channels:
+    if data is not None:
 
-        channel_df = pd.DataFrame(channels)
+        df = pd.DataFrame(data)
 
-        # ----------------------------------------------------
-        # KPI SUMMARY
-        # ----------------------------------------------------
+        if not df.empty:
 
-        col1, col2, col3 = st.columns(3)
+            c1, c2, c3 = st.columns(3)
 
-        col1.metric(
-            "Channels",
-            f"{len(channel_df):,}",
-        )
+            c1.metric(
+                "Channels",
+                f"{len(df):,}",
+            )
 
-        if "total_transactions" in channel_df:
-
-            col2.metric(
+            c2.metric(
                 "Transactions",
-                f"{int(channel_df['total_transactions'].sum()):,}",
+                f"{int(df['total_transactions'].sum()):,}",
             )
 
-        if "total_transaction_value" in channel_df:
-
-            col3.metric(
+            c3.metric(
                 "Total Value",
-                f"₦{channel_df['total_transaction_value'].sum():,.2f}",
+                f"₦{df['total_transaction_value'].sum():,.2f}",
             )
 
-        st.divider()
+            st.divider()
 
-        # ----------------------------------------------------
-        # TRANSACTION VALUE
-        # ----------------------------------------------------
+            fig = px.bar(
+                df,
+                x="channel_name",
+                y="total_transaction_value",
+                title="Transaction Value by Channel",
+            )
 
-        fig_value = px.bar(
-            channel_df,
-            x="channel_name",
-            y="total_transaction_value",
-            title="Transaction Value by Channel",
-        )
+            st.plotly_chart(
+                fig,
+                use_container_width=True,
+            )
 
-        st.plotly_chart(
-            fig_value,
-            use_container_width=True,
-        )
+            fig = px.bar(
+                df,
+                x="channel_name",
+                y="success_rate",
+                title="Success Rate by Channel",
+            )
 
-        # ----------------------------------------------------
-        # SUCCESS RATE
-        # ----------------------------------------------------
+            st.plotly_chart(
+                fig,
+                use_container_width=True,
+            )
 
-        fig_success = px.bar(
-            channel_df,
-            x="channel_name",
-            y="success_rate",
-            title="Success Rate by Channel",
-        )
-
-        st.plotly_chart(
-            fig_success,
-            use_container_width=True,
-        )
-
-        st.dataframe(
-            channel_df,
-            use_container_width=True,
-            hide_index=True,
-        )
+            st.dataframe(
+                df,
+                use_container_width=True,
+                hide_index=True,
+            )
 
 
 # ============================================================
@@ -747,75 +615,640 @@ elif page == "Partners":
 
     st.header("Partner Performance")
 
-    partners = fetch_api("/partners")
+    data = fetch_api("/partners")
 
-    if partners:
+    if data is not None:
 
-        partner_df = pd.DataFrame(
-            partners
-        )
+        df = pd.DataFrame(data)
 
-        # ----------------------------------------------------
-        # KPI SUMMARY
-        # ----------------------------------------------------
+        if not df.empty:
 
-        col1, col2, col3 = st.columns(3)
+            c1, c2, c3 = st.columns(3)
 
-        col1.metric(
-            "Partners",
-            f"{len(partner_df):,}",
-        )
+            c1.metric(
+                "Partners",
+                f"{len(df):,}",
+            )
 
-        if "total_transactions" in partner_df:
-
-            col2.metric(
+            c2.metric(
                 "Transactions",
-                f"{int(partner_df['total_transactions'].sum()):,}",
+                f"{int(df['total_transactions'].sum()):,}",
             )
 
-        if "total_transaction_value" in partner_df:
-
-            col3.metric(
+            c3.metric(
                 "Total Value",
-                f"₦{partner_df['total_transaction_value'].sum():,.2f}",
+                f"₦{df['total_transaction_value'].sum():,.2f}",
             )
+
+            st.divider()
+
+            fig = px.bar(
+                df,
+                x="partner_name",
+                y="total_transaction_value",
+                title="Transaction Value by Partner",
+            )
+
+            st.plotly_chart(
+                fig,
+                use_container_width=True,
+            )
+
+            fig = px.bar(
+                df,
+                x="partner_name",
+                y="success_rate",
+                title="Success Rate by Partner",
+            )
+
+            st.plotly_chart(
+                fig,
+                use_container_width=True,
+            )
+
+            st.dataframe(
+                df,
+                use_container_width=True,
+                hide_index=True,
+            )
+
+
+# ============================================================
+# PAYMENTS
+# ============================================================
+
+elif page == "Payments":
+
+    st.header("💳 Payments")
+
+    st.write(
+        "Initialize and verify a Paystack Test Mode payment."
+    )
+
+    st.warning(
+        "Test Mode only. Do not enter real card details."
+    )
+
+    # --------------------------------------------------------
+    # INITIALIZE PAYMENT
+    # --------------------------------------------------------
+
+    st.subheader("Initialize Payment")
+
+    with st.form("payment_form"):
+
+        email = st.text_input(
+            "Customer Email",
+            placeholder="customer@example.com",
+        )
+
+        amount = st.number_input(
+            "Amount (NGN)",
+            min_value=1.00,
+            value=100.00,
+            step=100.00,
+        )
+
+        description = st.text_input(
+            "Description",
+            value="FinPay test payment",
+        )
+
+        submitted = st.form_submit_button(
+            "Initialize Payment"
+        )
+
+    if submitted:
+
+        if not email:
+
+            st.error(
+                "Please enter a customer email."
+            )
+
+        else:
+
+            payload = {
+                "email": email,
+                "amount_naira": amount,
+                "currency": "NGN",
+                "description": description,
+            }
+
+            result = post_api(
+                "/payments/initialize",
+                payload,
+            )
+
+            if result:
+
+                st.success(
+                    "Payment initialized successfully."
+                )
+
+                st.session_state[
+                    "payment_reference"
+                ] = result.get(
+                    "reference"
+                )
+
+                st.session_state[
+                    "authorization_url"
+                ] = result.get(
+                    "authorization_url"
+                )
+
+                st.session_state[
+                    "payment_amount"
+                ] = amount
+
+    # --------------------------------------------------------
+    # CHECKOUT LINK
+    # --------------------------------------------------------
+
+    authorization_url = st.session_state.get(
+        "authorization_url"
+    )
+
+    reference = st.session_state.get(
+        "payment_reference"
+    )
+
+    if authorization_url:
 
         st.divider()
 
-        # ----------------------------------------------------
-        # TRANSACTION VALUE
-        # ----------------------------------------------------
-
-        fig_value = px.bar(
-            partner_df,
-            x="partner_name",
-            y="total_transaction_value",
-            title="Transaction Value by Partner",
+        st.subheader(
+            "Paystack Checkout"
         )
 
-        st.plotly_chart(
-            fig_value,
-            use_container_width=True,
+        st.write(
+            f"Reference: `{reference}`"
         )
 
-        # ----------------------------------------------------
-        # SUCCESS RATE
-        # ----------------------------------------------------
-
-        fig_success = px.bar(
-            partner_df,
-            x="partner_name",
-            y="success_rate",
-            title="Success Rate by Partner",
+        st.link_button(
+            "Open Paystack Checkout",
+            authorization_url,
         )
 
-        st.plotly_chart(
-            fig_success,
-            use_container_width=True,
+        st.info(
+            "Complete the payment in Paystack Test Mode, "
+            "then return here and use Verify Payment below."
         )
 
-        st.dataframe(
-            partner_df,
-            use_container_width=True,
-            hide_index=True,
+    # --------------------------------------------------------
+    # VERIFY PAYMENT
+    # --------------------------------------------------------
+
+    st.divider()
+
+    st.subheader("Verify Payment")
+
+    verification_reference = st.text_input(
+        "Payment Reference",
+        value=reference or "",
+        placeholder="FINPAY-...",
+    )
+
+    verify_clicked = st.button(
+        "Verify Payment"
+    )
+
+    if verify_clicked:
+
+        if not verification_reference:
+
+            st.error(
+                "Enter a payment reference."
+            )
+
+        else:
+
+            result = fetch_api(
+                f"/payments/verify/{verification_reference}"
+            )
+
+            if result:
+
+                payment_status = result.get(
+                    "payment_status",
+                    "unknown",
+                )
+
+                if (
+                    str(payment_status).lower()
+                    == "success"
+                ):
+
+                    st.success(
+                        "Payment verified successfully."
+                    )
+
+                else:
+
+                    st.warning(
+                        f"Payment status: {payment_status}"
+                    )
+
+                v1, v2, v3, v4 = st.columns(4)
+
+                v1.metric(
+                    "Status",
+                    str(payment_status),
+                )
+
+                amount_minor = result.get(
+                    "amount_minor",
+                    0,
+                )
+
+                v2.metric(
+                    "Amount",
+                    f"₦{float(amount_minor) / 100:,.2f}",
+                )
+
+                v3.metric(
+                    "Currency",
+                    result.get(
+                        "currency",
+                        "NGN",
+                    ),
+                )
+
+                v4.metric(
+                    "Channel",
+                    result.get(
+                        "channel",
+                        "N/A",
+                    ),
+                )
+
+                st.json(result)
+
+
+# ============================================================
+# PAYMENT HISTORY
+# ============================================================
+
+elif page == "Payment History":
+
+    st.header("Payment History")
+
+    data = fetch_api(
+        "/payments/history?limit=1000"
+    )
+
+    if data is None:
+
+        st.error(
+            "Unable to retrieve payment history."
         )
+
+    else:
+
+        df = pd.DataFrame(data)
+
+        if df.empty:
+
+            st.info(
+                "No payment records are currently available."
+            )
+
+        else:
+
+            # ------------------------------------------------
+            # AMOUNT CONVERSION
+            # ------------------------------------------------
+
+            if "amount_minor" in df.columns:
+
+                df["amount_naira"] = (
+                    pd.to_numeric(
+                        df["amount_minor"],
+                        errors="coerce",
+                    ) / 100
+                )
+
+            # ------------------------------------------------
+            # SUMMARY
+            # ------------------------------------------------
+
+            total_attempts = len(df)
+
+            if "status" in df.columns:
+
+                successful = (
+                    df["status"]
+                    .astype(str)
+                    .str.lower()
+                    .eq("success")
+                    .sum()
+                )
+
+            else:
+
+                successful = 0
+
+            if "amount_naira" in df.columns:
+
+                total_value = (
+                    df["amount_naira"]
+                    .fillna(0)
+                    .sum()
+                )
+
+            else:
+
+                total_value = 0
+
+            h1, h2, h3 = st.columns(3)
+
+            h1.metric(
+                "Payment Attempts",
+                f"{total_attempts:,}",
+            )
+
+            h2.metric(
+                "Successful Payments",
+                f"{successful:,}",
+            )
+
+            h3.metric(
+                "Payment Value",
+                f"₦{total_value:,.2f}",
+            )
+
+            st.divider()
+
+            # ------------------------------------------------
+            # STATUS FILTER
+            # ------------------------------------------------
+
+            if "status" in df.columns:
+
+                statuses = sorted(
+                    df["status"]
+                    .dropna()
+                    .astype(str)
+                    .unique()
+                    .tolist()
+                )
+
+                selected_statuses = st.multiselect(
+                    "Payment Status",
+                    statuses,
+                    default=statuses,
+                )
+
+                filtered_df = df[
+                    df["status"]
+                    .astype(str)
+                    .isin(selected_statuses)
+                ]
+
+            else:
+
+                filtered_df = df
+
+            # ------------------------------------------------
+            # STATUS CHART
+            # ------------------------------------------------
+
+            if "status" in filtered_df.columns:
+
+                status_summary = (
+                    filtered_df
+                    .groupby("status")
+                    .size()
+                    .reset_index(
+                        name="payment_count"
+                    )
+                )
+
+                fig = px.pie(
+                    status_summary,
+                    names="status",
+                    values="payment_count",
+                    title="Payment Status",
+                )
+
+                st.plotly_chart(
+                    fig,
+                    use_container_width=True,
+                )
+
+            # ------------------------------------------------
+            # DISPLAY TABLE
+            # ------------------------------------------------
+
+            st.subheader(
+                "Payment Transactions"
+            )
+
+            display_columns = [
+                "reference",
+                "customer_email",
+                "amount_naira",
+                "currency",
+                "status",
+                "channel",
+                "paystack_transaction_id",
+                "gateway_response",
+                "paid_at",
+                "created_at",
+            ]
+
+            available_columns = [
+                column
+                for column in display_columns
+                if column in filtered_df.columns
+            ]
+
+            st.dataframe(
+                filtered_df[
+                    available_columns
+                ],
+                use_container_width=True,
+                hide_index=True,
+            )
+# ============================================================
+# PAYMENT ANALYTICS
+# ============================================================
+
+elif page == "Payment Analytics":
+
+    st.header("Payment Gateway Analytics")
+
+    analytics = fetch_api(
+        "/payments/analytics"
+    )
+
+    daily = fetch_api(
+        "/payments/analytics/daily"
+    )
+
+    channels = fetch_api(
+        "/payments/analytics/channels"
+    )
+
+    # --------------------------------------------------------
+    # KPI CARDS
+    # --------------------------------------------------------
+
+    if analytics:
+
+        col1, col2, col3, col4 = st.columns(4)
+
+        col1.metric(
+            "Payment Attempts",
+            f"{int(analytics['total_payment_attempts']):,}",
+        )
+
+        col2.metric(
+            "Successful Payments",
+            f"{int(analytics['successful_payments']):,}",
+        )
+
+        col3.metric(
+            "Success Rate",
+            f"{float(analytics['payment_success_rate']):.2f}%",
+        )
+
+        col4.metric(
+            "Payment Value",
+            f"₦{float(analytics['total_payment_value']):,.2f}",
+        )
+
+        st.divider()
+
+        c1, c2, c3, c4 = st.columns(4)
+
+        c1.metric(
+            "Successful Value",
+            f"₦{float(analytics['successful_payment_value']):,.2f}",
+        )
+
+        c2.metric(
+            "Failed Payments",
+            f"{int(analytics['failed_payments']):,}",
+        )
+
+        c3.metric(
+            "Pending Payments",
+            f"{int(analytics['pending_payments']):,}",
+        )
+
+        c4.metric(
+            "Average Payment",
+            f"₦{float(analytics['average_payment_value']):,.2f}",
+        )
+
+    # --------------------------------------------------------
+    # DAILY TREND
+    # --------------------------------------------------------
+
+    if daily:
+
+        daily_df = pd.DataFrame(daily)
+
+        if not daily_df.empty:
+
+            daily_df["payment_date"] = pd.to_datetime(
+                daily_df["payment_date"]
+            )
+
+            st.subheader(
+                "Daily Payment Value"
+            )
+
+            fig = px.line(
+                daily_df,
+                x="payment_date",
+                y="total_payment_value",
+                title="Daily Payment Value",
+            )
+
+            fig.update_layout(
+                xaxis_title="Date",
+                yaxis_title="Payment Value (NGN)",
+            )
+
+            st.plotly_chart(
+                fig,
+                use_container_width=True,
+            )
+
+            st.subheader(
+                "Daily Payment Success Rate"
+            )
+
+            fig_success = px.line(
+                daily_df,
+                x="payment_date",
+                y="payment_success_rate",
+                title="Daily Payment Success Rate",
+            )
+
+            fig_success.update_layout(
+                xaxis_title="Date",
+                yaxis_title="Success Rate (%)",
+            )
+
+            st.plotly_chart(
+                fig_success,
+                use_container_width=True,
+            )
+
+    # --------------------------------------------------------
+    # CHANNEL ANALYSIS
+    # --------------------------------------------------------
+
+    if channels:
+
+        channel_df = pd.DataFrame(
+            channels
+        )
+
+        if not channel_df.empty:
+
+            st.subheader(
+                "Payment Value by Gateway Channel"
+            )
+
+            fig_channel = px.bar(
+                channel_df,
+                x="payment_channel",
+                y="total_payment_value",
+                title="Payment Value by Channel",
+            )
+
+            st.plotly_chart(
+                fig_channel,
+                use_container_width=True,
+            )
+
+            st.subheader(
+                "Payment Success Rate by Channel"
+            )
+
+            fig_channel_success = px.bar(
+                channel_df,
+                x="payment_channel",
+                y="payment_success_rate",
+                title="Payment Success Rate by Channel",
+            )
+
+            st.plotly_chart(
+                fig_channel_success,
+                use_container_width=True,
+            )
+
+            st.subheader(
+                "Gateway Channel Details"
+            )
+
+            st.dataframe(
+                channel_df,
+                use_container_width=True,
+                hide_index=True,
+            )
