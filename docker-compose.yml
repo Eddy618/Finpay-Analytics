@@ -1,5 +1,4 @@
 services:
-
   api:
     build:
       context: .
@@ -7,6 +6,8 @@ services:
     container_name: finpay-api
     env_file:
       - .env
+    environment:
+      DB_HOST: host.docker.internal
     ports:
       - "8000:8000"
     restart: unless-stopped
@@ -16,10 +17,13 @@ services:
       context: .
       dockerfile: Dockerfile.streamlit
     container_name: finpay-streamlit
+    env_file:
+      - .env
     environment:
+      DB_HOST: host.docker.internal
       API_URL: http://api:8000
     ports:
       - "8501:8501"
+    restart: unless-stopped
     depends_on:
       - api
-    restart: unless-stopped
