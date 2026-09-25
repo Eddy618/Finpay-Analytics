@@ -94,6 +94,11 @@ def paystack_headers() -> dict[str, str]:
             f"Bearer {PAYSTACK_SECRET_KEY}"
         ),
         "Content-Type": "application/json",
+        "Accept": "application/json",
+        "User-Agent": (
+            "Mozilla/5.0 (compatible; FinPay-Analytics/1.0; "
+            "+https://finpay-analytics-3.onrender.com)"
+        ),
     }
 
 
