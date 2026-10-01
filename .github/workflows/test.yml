@@ -34,10 +34,12 @@ jobs:
 
       - name: Run tests
         env:
+          PYTHONPATH: .
           TEST_USERNAME: ${{ secrets.TEST_USERNAME }}
           TEST_PASSWORD: ${{ secrets.TEST_PASSWORD }}
           JWT_SECRET_KEY: ${{ secrets.JWT_SECRET_KEY }}
           JWT_ALGORITHM: ${{ secrets.JWT_ALGORITHM }}
           JWT_EXPIRE_MINUTES: ${{ secrets.JWT_EXPIRE_MINUTES }}
         run: |
-          pytest -v
+          
+          python -m pytest -v
