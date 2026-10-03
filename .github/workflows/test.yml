@@ -17,6 +17,29 @@ jobs:
   test:
     runs-on: ubuntu-latest
 
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: finpay_test
+          POSTGRES_USER: finpay_user
+          POSTGRES_PASSWORD: finpay_test_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U finpay_user -d finpay_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      PYTHONPATH: .
+      DB_HOST: localhost
+      DB_PORT: "5432"
+      DB_NAME: finpay_test
+      DB_USER: finpay_user
+      DB_PASSWORD: finpay_test_password
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -32,14 +55,17 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: Load database schema
+        if: ${{ hashFiles('db/schema.sql') != '' }}
+        run: |
+          PGPASSWORD=finpay_test_password psql -h localhost -U finpay_user -d finpay_test -f db/schema.sql
+
       - name: Run tests
         env:
-          PYTHONPATH: .
           TEST_USERNAME: ${{ secrets.TEST_USERNAME }}
           TEST_PASSWORD: ${{ secrets.TEST_PASSWORD }}
           JWT_SECRET_KEY: ${{ secrets.JWT_SECRET_KEY }}
           JWT_ALGORITHM: ${{ secrets.JWT_ALGORITHM }}
           JWT_EXPIRE_MINUTES: ${{ secrets.JWT_EXPIRE_MINUTES }}
         run: |
-          
           python -m pytest -v
