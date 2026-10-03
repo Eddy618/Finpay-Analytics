@@ -70,7 +70,8 @@ jobs:
             -v ON_ERROR_STOP=1 -f db/schema_ci.sql
 
       - name: Create CI admin user
-        run: python src/create_admin.py
+        run: |
+          printf '%s\n%s\n%s\n' "$ADMIN_USERNAME" "$ADMIN_PASSWORD" "$ADMIN_PASSWORD" | python src/create_admin.py
 
       - name: Run tests
         run: python -m pytest -v
