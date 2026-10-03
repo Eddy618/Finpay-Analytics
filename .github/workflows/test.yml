@@ -16,10 +16,11 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     services:
       postgres:
-        image: postgres:16
+        image: postgres:17
         env:
           POSTGRES_DB: finpay_test
           POSTGRES_USER: finpay_user
@@ -39,6 +40,13 @@ jobs:
       DB_NAME: finpay_test
       DB_USER: finpay_user
       DB_PASSWORD: finpay_test_password
+      JWT_SECRET_KEY: ci-only-secret-key-0123456789abcdef0123456789abcdef
+      JWT_ALGORITHM: HS256
+      JWT_EXPIRE_MINUTES: "60"
+      TEST_USERNAME: ci_admin
+      TEST_PASSWORD: ci_admin_password_123
+      ADMIN_USERNAME: ci_admin
+      ADMIN_PASSWORD: ci_admin_password_123
 
     steps:
       - name: Checkout repository
@@ -56,16 +64,13 @@ jobs:
           pip install -r requirements.txt
 
       - name: Load database schema
-        if: ${{ hashFiles('db/schema.sql') != '' }}
         run: |
-          PGPASSWORD=finpay_test_password psql -h localhost -U finpay_user -d finpay_test -f db/schema.sql
+          grep -v -E '^(\\restrict|\\unrestrict|SET transaction_timeout)' db/schema.sql > db/schema_ci.sql
+          PGPASSWORD="$DB_PASSWORD" psql -h localhost -U "$DB_USER" -d "$DB_NAME" \
+            -v ON_ERROR_STOP=1 -f db/schema_ci.sql
+
+      - name: Create CI admin user
+        run: python src/create_admin.py
 
       - name: Run tests
-        env:
-          TEST_USERNAME: ${{ secrets.TEST_USERNAME }}
-          TEST_PASSWORD: ${{ secrets.TEST_PASSWORD }}
-          JWT_SECRET_KEY: ${{ secrets.JWT_SECRET_KEY }}
-          JWT_ALGORITHM: ${{ secrets.JWT_ALGORITHM }}
-          JWT_EXPIRE_MINUTES: ${{ secrets.JWT_EXPIRE_MINUTES }}
-        run: |
-          python -m pytest -v
+        run: python -m pytest -v
