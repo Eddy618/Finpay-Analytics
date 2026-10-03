@@ -1,6 +1,12 @@
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, HTTPException, Query
 from sqlalchemy import text
 
+from api.auth import (
+    CurrentUser,
+    get_current_user,
+    require_roles,
+    router as auth_router,
+)
 from api.database import engine
 from api.payments import router as payments_router
 
@@ -15,6 +21,9 @@ app = FastAPI(
     version="1.0.0",
 )
 
+
+# Register auth routes
+app.include_router(auth_router)
 
 # Register payment routes
 app.include_router(payments_router)
@@ -60,7 +69,9 @@ def health_check():
 # ============================================================
 
 @app.get("/kpis")
-def get_kpis():
+def get_kpis(
+    current_user: CurrentUser = Depends(get_current_user),
+):
 
     query = text("""
         SELECT
@@ -112,6 +123,7 @@ def get_transactions(
     ),
     status: str | None = None,
     transaction_type: str | None = None,
+    current_user: CurrentUser = Depends(get_current_user),
 ):
 
     conditions = []
@@ -188,6 +200,9 @@ def get_anomalies(
         ge=1,
         le=1000,
     ),
+    current_user: CurrentUser = Depends(
+        require_roles("admin", "analyst")
+    ),
 ):
 
     query = text("""
@@ -238,6 +253,9 @@ def get_reconciliation(
         ge=1,
         le=1000,
     ),
+    current_user: CurrentUser = Depends(
+        require_roles("admin", "analyst")
+    ),
 ):
 
     query = text("""
@@ -280,7 +298,9 @@ def get_reconciliation(
 # ============================================================
 
 @app.get("/channels")
-def get_channels():
+def get_channels(
+    current_user: CurrentUser = Depends(get_current_user),
+):
 
     query = text("""
         SELECT
@@ -317,7 +337,9 @@ def get_channels():
 # ============================================================
 
 @app.get("/partners")
-def get_partners():
+def get_partners(
+    current_user: CurrentUser = Depends(get_current_user),
+):
 
     query = text("""
         SELECT

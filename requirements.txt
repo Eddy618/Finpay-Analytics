@@ -11,3 +11,5 @@ streamlit
 plotly
 pytest
 httpx
+pwdlib[argon2]
+PyJWT
