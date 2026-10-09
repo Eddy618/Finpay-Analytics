@@ -1,113 +1,72 @@
+"""
+FinPay Analytics
+Main FastAPI application.
+"""
+
+from typing import Optional
+
 from fastapi import Depends, FastAPI, HTTPException, Query
 from sqlalchemy import text
 
-from api.auth import (
-    CurrentUser,
-    get_current_user,
-    require_roles,
-    router as auth_router,
-)
+from api.auth import CurrentUser, get_current_user, router as auth_router
 from api.database import engine
 from api.payments import router as payments_router
 
 
-# ============================================================
-# FASTAPI APPLICATION
-# ============================================================
-
 app = FastAPI(
     title="FinPay Analytics API",
-    description="FinPay transaction analytics, risk, reconciliation, and payments API",
+    description="Fintech transaction intelligence and payment analytics API.",
     version="1.0.0",
 )
 
 
-# Register auth routes
-app.include_router(auth_router)
+# ============================================================
+# ROUTERS
+# ============================================================
 
-# Register payment routes
+app.include_router(auth_router)
 app.include_router(payments_router)
 
 
 # ============================================================
-# ROOT
-# ============================================================
-
-@app.get("/")
-def root():
-    return {
-        "application": "FinPay Analytics API",
-        "status": "running",
-        "version": "1.0.0",
-    }
-
-
-# ============================================================
-# HEALTH CHECK
+# HEALTH
 # ============================================================
 
 @app.get("/health")
 def health_check():
-    try:
-        with engine.connect() as connection:
-            connection.execute(text("SELECT 1"))
-
-        return {
-            "status": "healthy",
-            "database": "connected",
-        }
-
-    except Exception as error:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Database connection failed: {error}",
-        )
+    return {
+        "status": "healthy",
+        "service": "finpay-api",
+    }
 
 
 # ============================================================
-# EXECUTIVE KPIs
+# KPI
 # ============================================================
 
 @app.get("/kpis")
 def get_kpis(
     current_user: CurrentUser = Depends(get_current_user),
 ):
-
-    query = text("""
-        SELECT
-            total_transactions,
-            successful_transactions,
-            failed_transactions,
-            pending_transactions,
-            refunded_transactions,
-            total_transaction_value,
-            successful_transaction_value,
-            average_transaction_value,
-            success_rate
-        FROM public.vw_executive_kpis;
-    """)
-
-    try:
-        with engine.connect() as connection:
-            result = connection.execute(query)
-            row = result.mappings().first()
-
-        if row is None:
-            raise HTTPException(
-                status_code=404,
-                detail="KPI data not found.",
+    with engine.connect() as connection:
+        result = connection.execute(
+            text(
+                """
+                SELECT *
+                FROM public.vw_executive_kpis;
+                """
             )
-
-        return dict(row)
-
-    except HTTPException:
-        raise
-
-    except Exception as error:
-        raise HTTPException(
-            status_code=500,
-            detail=f"KPI query failed: {error}",
         )
+
+        row = result.mappings().first()
+
+    if row is None:
+        raise HTTPException(
+            status_code=404,
+            detail="KPI data not found.",
+        )
+
+    return dict(row)
 
 
 # ============================================================
@@ -116,77 +75,23 @@ def get_kpis(
 
 @app.get("/transactions")
 def get_transactions(
-    limit: int = Query(
-        default=100,
-        ge=1,
-        le=1000,
-    ),
-    status: str | None = None,
-    transaction_type: str | None = None,
+    limit: int = Query(default=100, ge=1, le=1000),
     current_user: CurrentUser = Depends(get_current_user),
 ):
-
-    conditions = []
-    params = {
-        "limit": limit,
-    }
-
-    if status:
-        conditions.append(
-            "transaction_status = :status"
-        )
-        params["status"] = status
-
-    if transaction_type:
-        conditions.append(
-            "transaction_type = :transaction_type"
-        )
-        params["transaction_type"] = transaction_type
-
-    where_clause = ""
-
-    if conditions:
-        where_clause = (
-            "WHERE " + " AND ".join(conditions)
+    with engine.connect() as connection:
+        result = connection.execute(
+            text(
+                """
+                SELECT *
+                FROM public.transactions
+                ORDER BY transaction_timestamp DESC
+                LIMIT :limit;
+                """
+            ),
+            {"limit": limit},
         )
 
-    query = text(f"""
-        SELECT
-            transaction_id,
-            customer_id,
-            merchant_id,
-            channel_id,
-            partner_id,
-            transaction_type,
-            transaction_status,
-            amount,
-            currency,
-            transaction_timestamp,
-            completed_timestamp,
-            failure_reason
-        FROM public.transactions
-        {where_clause}
-        ORDER BY transaction_timestamp DESC
-        LIMIT :limit;
-    """)
-
-    try:
-        with engine.connect() as connection:
-            result = connection.execute(
-                query,
-                params,
-            )
-
-            return [
-                dict(row)
-                for row in result.mappings()
-            ]
-
-    except Exception as error:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Transaction query failed: {error}",
-        )
+        return [dict(row) for row in result.mappings().all()]
 
 
 # ============================================================
@@ -195,51 +100,23 @@ def get_transactions(
 
 @app.get("/anomalies")
 def get_anomalies(
-    limit: int = Query(
-        default=100,
-        ge=1,
-        le=1000,
-    ),
-    current_user: CurrentUser = Depends(
-        require_roles("admin", "analyst")
-    ),
+    limit: int = Query(default=100, ge=1, le=1000),
+    current_user: CurrentUser = Depends(get_current_user),
 ):
-
-    query = text("""
-        SELECT
-            transaction_id,
-            customer_id,
-            merchant_id,
-            transaction_type,
-            transaction_status,
-            amount,
-            processing_time_minutes,
-            transaction_anomaly,
-            reconciliation_status,
-            risk_category
-        FROM public.vw_transaction_anomalies
-        WHERE risk_category <> 'Normal'
-        ORDER BY amount DESC
-        LIMIT :limit;
-    """)
-
-    try:
-        with engine.connect() as connection:
-            result = connection.execute(
-                query,
-                {"limit": limit},
-            )
-
-            return [
-                dict(row)
-                for row in result.mappings()
-            ]
-
-    except Exception as error:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Anomaly query failed: {error}",
+    with engine.connect() as connection:
+        result = connection.execute(
+            text(
+                """
+                SELECT *
+                FROM public.vw_transaction_anomalies
+                ORDER BY transaction_timestamp DESC
+                LIMIT :limit;
+                """
+            ),
+            {"limit": limit},
         )
+
+        return [dict(row) for row in result.mappings().all()]
 
 
 # ============================================================
@@ -248,125 +125,205 @@ def get_anomalies(
 
 @app.get("/reconciliation")
 def get_reconciliation(
-    limit: int = Query(
-        default=100,
-        ge=1,
-        le=1000,
-    ),
-    current_user: CurrentUser = Depends(
-        require_roles("admin", "analyst")
-    ),
+    limit: int = Query(default=100, ge=1, le=1000),
+    current_user: CurrentUser = Depends(get_current_user),
 ):
-
-    query = text("""
-        SELECT
-            transaction_id,
-            partner_id,
-            transaction_status,
-            transaction_amount,
-            settlement_id,
-            settlement_amount,
-            settlement_status,
-            reconciliation_status
-        FROM public.vw_reconciliation
-        WHERE reconciliation_status <> 'Matched'
-        ORDER BY transaction_amount DESC
-        LIMIT :limit;
-    """)
-
-    try:
-        with engine.connect() as connection:
-            result = connection.execute(
-                query,
-                {"limit": limit},
-            )
-
-            return [
-                dict(row)
-                for row in result.mappings()
-            ]
-
-    except Exception as error:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Reconciliation query failed: {error}",
+    with engine.connect() as connection:
+        result = connection.execute(
+            text(
+                """
+                SELECT *
+                FROM public.vw_reconciliation
+                LIMIT :limit;
+                """
+            ),
+            {"limit": limit},
         )
+
+        return [dict(row) for row in result.mappings().all()]
 
 
 # ============================================================
-# CHANNEL PERFORMANCE
+# CHANNELS
 # ============================================================
 
 @app.get("/channels")
 def get_channels(
     current_user: CurrentUser = Depends(get_current_user),
 ):
-
-    query = text("""
-        SELECT
-            channel_name,
-            total_transactions,
-            successful_transactions,
-            failed_transactions,
-            pending_transactions,
-            total_transaction_value,
-            average_transaction_value,
-            success_rate
-        FROM public.vw_channel_performance
-        ORDER BY total_transaction_value DESC;
-    """)
-
-    try:
-        with engine.connect() as connection:
-            result = connection.execute(query)
-
-            return [
-                dict(row)
-                for row in result.mappings()
-            ]
-
-    except Exception as error:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Channel query failed: {error}",
+    with engine.connect() as connection:
+        result = connection.execute(
+            text(
+                """
+                SELECT *
+                FROM public.vw_channel_performance;
+                """
+            )
         )
+
+        return [dict(row) for row in result.mappings().all()]
 
 
 # ============================================================
-# PARTNER PERFORMANCE
+# PARTNERS
 # ============================================================
 
 @app.get("/partners")
 def get_partners(
     current_user: CurrentUser = Depends(get_current_user),
 ):
-
-    query = text("""
-        SELECT
-            partner_name,
-            partner_type,
-            total_transactions,
-            successful_transactions,
-            failed_transactions,
-            pending_transactions,
-            total_transaction_value,
-            average_transaction_value,
-            success_rate
-        FROM public.vw_partner_performance
-        ORDER BY total_transaction_value DESC;
-    """)
-
-    try:
-        with engine.connect() as connection:
-            result = connection.execute(query)
-
-            return [
-                dict(row)
-                for row in result.mappings()
-            ]
-
-    except Exception as error:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Partner query failed: {error}",
+    with engine.connect() as connection:
+        result = connection.execute(
+            text(
+                """
+                SELECT *
+                FROM public.vw_partner_performance;
+                """
+            )
         )
+
+        return [dict(row) for row in result.mappings().all()]
+
+
+# ============================================================
+# ML RISK
+# ============================================================
+
+@app.get("/risk")
+def get_risk(
+    limit: int = Query(default=100, ge=1, le=1000),
+    category: Optional[str] = Query(default=None),
+    anomalies_only: bool = Query(default=False),
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """
+    Return ML-derived transaction risk records.
+
+    This is an unsupervised anomaly score, not a fraud probability.
+    """
+
+    query = """
+        SELECT *
+        FROM public.vw_transaction_risk
+        WHERE 1 = 1
+    """
+
+    params = {
+        "limit": limit,
+    }
+
+    if category:
+        query += """
+            AND risk_category = :category
+        """
+        params["category"] = category
+
+    if anomalies_only:
+        query += """
+            AND is_anomaly = 1
+        """
+
+    query += """
+        ORDER BY risk_score DESC
+        LIMIT :limit;
+    """
+
+    with engine.connect() as connection:
+        result = connection.execute(
+            text(query),
+            params,
+        )
+
+        return [dict(row) for row in result.mappings().all()]
+
+
+# ============================================================
+# ML RISK SUMMARY
+# ============================================================
+
+@app.get("/risk/summary")
+def get_risk_summary(
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """
+    Return summary statistics for the ML risk model.
+    """
+
+    with engine.connect() as connection:
+        result = connection.execute(
+            text(
+                """
+                SELECT
+                    COUNT(*) AS total_scored,
+                    SUM(is_anomaly) AS total_anomalies,
+                    ROUND(
+                        AVG(risk_score)::numeric,
+                        2
+                    ) AS average_risk_score,
+                    ROUND(
+                        MIN(risk_score)::numeric,
+                        2
+                    ) AS minimum_risk_score,
+                    ROUND(
+                        MAX(risk_score)::numeric,
+                        2
+                    ) AS maximum_risk_score
+                FROM public.transaction_risk_scores;
+                """
+            )
+        )
+
+        row = result.mappings().first()
+
+    if row is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Risk summary not found.",
+        )
+
+    return dict(row)
+
+
+# ============================================================
+# TOP ML RISKS
+# ============================================================
+
+@app.get("/risk/top")
+def get_top_risks(
+    limit: int = Query(default=20, ge=1, le=100),
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """
+    Return the highest-risk transactions.
+    """
+
+    with engine.connect() as connection:
+        result = connection.execute(
+            text(
+                """
+                SELECT
+                    transaction_id,
+                    customer_id,
+                    merchant_id,
+                    channel_id,
+                    partner_id,
+                    transaction_type,
+                    transaction_status,
+                    amount,
+                    currency,
+                    transaction_timestamp,
+                    risk_score,
+                    is_anomaly,
+                    risk_category,
+                    model_name,
+                    model_version,
+                    scored_at
+                FROM public.vw_transaction_risk
+                ORDER BY risk_score DESC
+                LIMIT :limit;
+                """
+            ),
+            {"limit": limit},
+        )
+
+        return [dict(row) for row in result.mappings().all()]

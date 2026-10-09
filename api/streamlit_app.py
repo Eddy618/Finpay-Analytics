@@ -27,79 +27,205 @@ API_URL = os.getenv(
     "http://127.0.0.1:8000",
 )
 
+# ============================================================
+# API AUTHENTICATION
+# ============================================================
+
+if "api_token" not in st.session_state:
+    st.session_state["api_token"] = None
+
+
+def login_to_api(username: str, password: str):
+    """Authenticate against FastAPI and store the JWT."""
+
+    try:
+        response = requests.post(
+            f"{API_URL}/auth/login",
+            json={
+                "username": username,
+                "password": password,
+            },
+            timeout=15,
+        )
+
+        response.raise_for_status()
+
+        result = response.json()
+
+        st.session_state["api_token"] = result[
+            "access_token"
+        ]
+
+        st.session_state["api_username"] = result.get(
+            "username",
+            username,
+        )
+
+        st.session_state["api_role"] = result.get(
+            "role",
+            "",
+        )
+
+        return True
+
+    except requests.exceptions.RequestException as error:
+
+        st.error(
+            f"Login failed: {error}"
+        )
+
+        return False
+
+
+def logout_from_api():
+    """Clear the stored API JWT."""
+
+    st.session_state["api_token"] = None
+    st.session_state["api_username"] = None
+    st.session_state["api_role"] = None
+
 
 # ============================================================
 # API HELPERS
 # ============================================================
 
 def fetch_api(endpoint: str):
-    """GET request to FastAPI."""
+    """GET request to FastAPI using JWT authentication."""
+
+    token = st.session_state.get(
+        "api_token"
+    )
+
+    if not token:
+        st.warning(
+            "Please log in to FinPay Analytics."
+        )
+        return None
 
     try:
+
         response = requests.get(
             f"{API_URL}{endpoint}",
+            headers={
+                "Authorization": f"Bearer {token}"
+            },
             timeout=15,
         )
+
+        if response.status_code == 401:
+
+            st.session_state["api_token"] = None
+
+            st.error(
+                "Your API session has expired. "
+                "Please log in again."
+            )
+
+            return None
 
         response.raise_for_status()
 
         return response.json()
 
     except requests.exceptions.ConnectionError:
+
         st.error(
             f"Cannot connect to FastAPI at {API_URL}."
         )
+
         return None
 
     except requests.exceptions.Timeout:
-        st.error("FastAPI request timed out.")
+
+        st.error(
+            "FastAPI request timed out."
+        )
+
         return None
 
     except requests.exceptions.HTTPError as error:
+
         st.error(
             f"FastAPI returned an error: {error}"
         )
+
         return None
 
     except requests.exceptions.RequestException as error:
+
         st.error(
             f"API request failed: {error}"
         )
+
         return None
 
 
 def post_api(endpoint: str, payload: dict):
-    """POST request to FastAPI."""
+    """POST request to FastAPI using JWT authentication."""
+
+    token = st.session_state.get(
+        "api_token"
+    )
+
+    if not token:
+        st.warning(
+            "Please log in to FinPay Analytics."
+        )
+        return None
 
     try:
+
         response = requests.post(
             f"{API_URL}{endpoint}",
             json=payload,
+            headers={
+                "Authorization": f"Bearer {token}"
+            },
             timeout=20,
         )
+
+        if response.status_code == 401:
+
+            st.session_state["api_token"] = None
+
+            st.error(
+                "Your API session has expired. "
+                "Please log in again."
+            )
+
+            return None
 
         response.raise_for_status()
 
         return response.json()
 
     except requests.exceptions.ConnectionError:
+
         st.error(
             f"Cannot connect to FastAPI at {API_URL}."
         )
+
         return None
 
     except requests.exceptions.Timeout:
-        st.error("FastAPI request timed out.")
+
+        st.error(
+            "FastAPI request timed out."
+        )
+
         return None
 
     except requests.exceptions.HTTPError as error:
 
         try:
+
             error_detail = response.json().get(
                 "detail",
                 str(error),
             )
+
         except Exception:
+
             error_detail = str(error)
 
         st.error(
@@ -109,10 +235,66 @@ def post_api(endpoint: str, payload: dict):
         return None
 
     except requests.exceptions.RequestException as error:
+
         st.error(
             f"API request failed: {error}"
         )
+
         return None
+
+
+# ============================================================
+# LOGIN
+# ============================================================
+
+if not st.session_state.get("api_token"):
+
+    st.title("FinPay Analytics")
+
+    st.subheader("Sign in")
+
+    st.caption(
+        "Authenticate with the FinPay Analytics API "
+        "to access the dashboard."
+    )
+
+    with st.form("login_form"):
+
+        username = st.text_input(
+            "Username"
+        )
+
+        password = st.text_input(
+            "Password",
+            type="password",
+        )
+
+        login_clicked = st.form_submit_button(
+            "Sign in"
+        )
+
+    if login_clicked:
+
+        if not username or not password:
+
+            st.error(
+                "Enter both username and password."
+            )
+
+        else:
+
+            if login_to_api(
+                username,
+                password,
+            ):
+
+                st.success(
+                    "Login successful."
+                )
+
+                st.rerun()
+
+    st.stop()
 
 
 # ============================================================
@@ -140,6 +322,20 @@ st.caption(
 
 st.sidebar.title("FinPay")
 
+st.sidebar.caption(
+    f"User: {st.session_state.get('api_username', '')}"
+)
+
+st.sidebar.caption(
+    f"Role: {st.session_state.get('api_role', '')}"
+)
+
+if st.sidebar.button("Sign out"):
+
+    logout_from_api()
+
+    st.rerun()
+
 page = st.sidebar.radio(
     "Navigation",
     [
@@ -153,6 +349,7 @@ page = st.sidebar.radio(
         "Payments",
         "Payment History",
         "Payment Analytics",
+        "Risk Intelligence",
     ],
 )
 
@@ -1071,6 +1268,8 @@ elif page == "Payment History":
                 use_container_width=True,
                 hide_index=True,
             )
+
+
 # ============================================================
 # PAYMENT ANALYTICS
 # ============================================================
@@ -1251,4 +1450,380 @@ elif page == "Payment Analytics":
                 channel_df,
                 use_container_width=True,
                 hide_index=True,
+            )
+
+
+# ============================================================
+# ML RISK INTELLIGENCE
+# ============================================================
+
+elif page == "Risk Intelligence":
+
+    st.header("ML Risk Intelligence")
+
+    st.caption(
+        "Machine-learning-based transaction anomaly detection "
+        "using an Isolation Forest model."
+    )
+
+    st.info(
+        "Risk score is an anomaly score, not a probability of fraud."
+    )
+
+    # --------------------------------------------------------
+    # RISK SUMMARY
+    # --------------------------------------------------------
+
+    summary = fetch_api("/risk/summary")
+
+    if summary:
+
+        st.subheader("Risk Model Summary")
+
+        total_scored = int(
+            summary.get(
+                "total_scored",
+                0,
+            )
+        )
+
+        total_anomalies = int(
+            summary.get(
+                "total_anomalies",
+                0,
+            ) or 0
+        )
+
+        average_risk = float(
+            summary.get(
+                "average_risk_score",
+                0,
+            ) or 0
+        )
+
+        minimum_risk = float(
+            summary.get(
+                "minimum_risk_score",
+                0,
+            ) or 0
+        )
+
+        maximum_risk = float(
+            summary.get(
+                "maximum_risk_score",
+                0,
+            ) or 0
+        )
+
+        anomaly_rate = (
+            total_anomalies
+            / total_scored
+            * 100
+            if total_scored
+            else 0
+        )
+
+        col1, col2, col3, col4 = st.columns(4)
+
+        col1.metric(
+            "Transactions Scored",
+            f"{total_scored:,}",
+        )
+
+        col2.metric(
+            "ML Anomalies",
+            f"{total_anomalies:,}",
+        )
+
+        col3.metric(
+            "Anomaly Rate",
+            f"{anomaly_rate:.2f}%",
+        )
+
+        col4.metric(
+            "Average Risk Score",
+            f"{average_risk:.2f}",
+        )
+
+        st.divider()
+
+        c1, c2 = st.columns(2)
+
+        c1.metric(
+            "Minimum Risk Score",
+            f"{minimum_risk:.2f}",
+        )
+
+        c2.metric(
+            "Maximum Risk Score",
+            f"{maximum_risk:.2f}",
+        )
+
+    # --------------------------------------------------------
+    # RISK FILTERS
+    # --------------------------------------------------------
+
+    st.subheader("Risk Investigation")
+
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+
+        risk_category = st.selectbox(
+            "Risk Category",
+            [
+                "All",
+                "Low",
+                "Moderate",
+                "High",
+                "Critical",
+            ],
+        )
+
+    with col2:
+
+        anomalies_only = st.checkbox(
+            "Anomalies Only",
+            value=False,
+        )
+
+    with col3:
+
+        risk_limit = st.slider(
+            "Records to Display",
+            min_value=10,
+            max_value=500,
+            value=100,
+            step=10,
+        )
+
+    # --------------------------------------------------------
+    # RISK DATA
+    # --------------------------------------------------------
+
+    endpoint = (
+        f"/risk?limit={risk_limit}"
+    )
+
+    params = []
+
+    if risk_category != "All":
+
+        params.append(
+            f"category={risk_category}"
+        )
+
+    if anomalies_only:
+
+        params.append(
+            "anomalies_only=true"
+        )
+
+    if params:
+
+        endpoint += "&" + "&".join(params)
+
+    risk_data = fetch_api(endpoint)
+
+    if risk_data is not None:
+
+        risk_df = pd.DataFrame(
+            risk_data
+        )
+
+        if risk_df.empty:
+
+            st.warning(
+                "No risk records matched the selected filters."
+            )
+
+        else:
+
+            # ------------------------------------------------
+            # RISK CATEGORY DISTRIBUTION
+            # ------------------------------------------------
+
+            st.subheader(
+                "Risk Category Distribution"
+            )
+
+            category_summary = (
+                risk_df
+                .groupby("risk_category")
+                .size()
+                .reset_index(
+                    name="transaction_count"
+                )
+            )
+
+            category_order = [
+                "Low",
+                "Moderate",
+                "High",
+                "Critical",
+            ]
+
+            category_summary["risk_category"] = pd.Categorical(
+                category_summary["risk_category"],
+                categories=category_order,
+                ordered=True,
+            )
+
+            category_summary = (
+                category_summary
+                .sort_values("risk_category")
+            )
+
+            fig = px.bar(
+                category_summary,
+                x="risk_category",
+                y="transaction_count",
+                title="Transactions by ML Risk Category",
+            )
+
+            fig.update_layout(
+                xaxis_title="Risk Category",
+                yaxis_title="Transactions",
+            )
+
+            st.plotly_chart(
+                fig,
+                use_container_width=True,
+            )
+
+            # ------------------------------------------------
+            # RISK SCORE DISTRIBUTION
+            # ------------------------------------------------
+
+            if "risk_score" in risk_df.columns:
+
+                st.subheader(
+                    "Risk Score Distribution"
+                )
+
+                fig_score = px.histogram(
+                    risk_df,
+                    x="risk_score",
+                    nbins=25,
+                    title="ML Risk Score Distribution",
+                )
+
+                fig_score.update_layout(
+                    xaxis_title="Risk Score",
+                    yaxis_title="Transactions",
+                )
+
+                st.plotly_chart(
+                    fig_score,
+                    use_container_width=True,
+                )
+
+            # ------------------------------------------------
+            # RISK TABLE
+            # ------------------------------------------------
+
+            st.subheader(
+                "Risk Investigation Queue"
+            )
+
+            display_columns = [
+                "transaction_id",
+                "customer_id",
+                "merchant_id",
+                "channel_id",
+                "partner_id",
+                "transaction_type",
+                "transaction_status",
+                "amount",
+                "currency",
+                "transaction_timestamp",
+                "risk_score",
+                "is_anomaly",
+                "risk_category",
+                "model_name",
+                "model_version",
+                "scored_at",
+            ]
+
+            available_columns = [
+                column
+                for column in display_columns
+                if column in risk_df.columns
+            ]
+
+            st.dataframe(
+                risk_df[
+                    available_columns
+                ],
+                use_container_width=True,
+                hide_index=True,
+            )
+
+    # --------------------------------------------------------
+    # TOP RISK TRANSACTIONS
+    # --------------------------------------------------------
+
+    st.divider()
+
+    st.subheader(
+        "Highest-Risk Transactions"
+    )
+
+    top_limit = st.slider(
+        "Top transactions",
+        min_value=5,
+        max_value=50,
+        value=10,
+        step=5,
+    )
+
+    top_risk = fetch_api(
+        f"/risk/top?limit={top_limit}"
+    )
+
+    if top_risk is not None:
+
+        top_df = pd.DataFrame(
+            top_risk
+        )
+
+        if not top_df.empty:
+
+            top_display_columns = [
+                "transaction_id",
+                "customer_id",
+                "merchant_id",
+                "channel_id",
+                "partner_id",
+                "transaction_type",
+                "transaction_status",
+                "amount",
+                "currency",
+                "transaction_timestamp",
+                "risk_score",
+                "risk_category",
+                "is_anomaly",
+                "model_name",
+                "model_version",
+                "scored_at",
+            ]
+
+            available_top_columns = [
+                column
+                for column in top_display_columns
+                if column in top_df.columns
+            ]
+
+            st.dataframe(
+                top_df[
+                    available_top_columns
+                ],
+                use_container_width=True,
+                hide_index=True,
+            )
+
+        else:
+
+            st.info(
+                "No high-risk transactions were returned."
             )
