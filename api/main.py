@@ -29,14 +29,39 @@ app.include_router(payments_router)
 
 
 # ============================================================
+# ROOT
+# ============================================================
+
+@app.get("/")
+def root():
+    return {
+        "application": "FinPay Analytics API",
+        "status": "running",
+        "docs": "/docs",
+    }
+
+
+# ============================================================
 # HEALTH
 # ============================================================
 
 @app.get("/health")
 def health_check():
+    try:
+        with engine.connect() as connection:
+            connection.execute(text("SELECT 1"))
+
+        database_status = "connected"
+        service_status = "healthy"
+
+    except Exception:
+        database_status = "disconnected"
+        service_status = "unhealthy"
+
     return {
-        "status": "healthy",
+        "status": service_status,
         "service": "finpay-api",
+        "database": database_status,
     }
 
 
@@ -76,19 +101,30 @@ def get_kpis(
 @app.get("/transactions")
 def get_transactions(
     limit: int = Query(default=100, ge=1, le=1000),
+    status: Optional[str] = Query(default=None),
     current_user: CurrentUser = Depends(get_current_user),
 ):
+    query = """
+        SELECT *
+        FROM public.transactions
+    """
+    params = {"limit": limit}
+
+    if status:
+        query += """
+            WHERE transaction_status = :status
+        """
+        params["status"] = status
+
+    query += """
+        ORDER BY transaction_timestamp DESC
+        LIMIT :limit;
+    """
+
     with engine.connect() as connection:
         result = connection.execute(
-            text(
-                """
-                SELECT *
-                FROM public.transactions
-                ORDER BY transaction_timestamp DESC
-                LIMIT :limit;
-                """
-            ),
-            {"limit": limit},
+            text(query),
+            params,
         )
 
         return [dict(row) for row in result.mappings().all()]

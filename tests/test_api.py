@@ -1,11 +1,13 @@
 import os
+from datetime import datetime, timedelta, timezone
 
+import jwt
 import pytest
 from dotenv import load_dotenv
 from fastapi.testclient import TestClient
 
+from api.auth import JWT_ALGORITHM, JWT_SECRET_KEY
 from api.main import app
-
 
 # Load local environment variables from .env
 load_dotenv()
@@ -123,6 +125,55 @@ def test_login():
 
 def test_kpis_requires_authentication():
     response = client.get("/kpis")
+
+    assert response.status_code == 401
+
+
+def test_tampered_token_rejected():
+    token = jwt.encode(
+        {
+            "sub": "1",
+            "username": "security-test",
+            "role": "analyst",
+            "exp": datetime.now(timezone.utc) + timedelta(minutes=5),
+        },
+        "intentionally-wrong-test-signing-key",
+        algorithm=JWT_ALGORITHM,
+    )
+
+    response = client.get(
+        "/kpis",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 401
+
+
+def test_expired_token_rejected():
+    token = jwt.encode(
+        {
+            "sub": "1",
+            "username": "security-test",
+            "role": "analyst",
+            "exp": datetime.now(timezone.utc) - timedelta(minutes=5),
+        },
+        JWT_SECRET_KEY,
+        algorithm=JWT_ALGORITHM,
+    )
+
+    response = client.get(
+        "/kpis",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 401
+
+
+def test_invalid_token_rejected():
+    response = client.get(
+        "/kpis",
+        headers={"Authorization": "Bearer not-a-valid-jwt"},
+    )
 
     assert response.status_code == 401
 
