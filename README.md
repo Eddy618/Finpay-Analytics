@@ -63,6 +63,31 @@ The current reconciliation dataset contains:
 
 ---
 
+## Live Deployment
+
+FinPay Analytics is deployed on Railway.
+
+- **Dashboard:** https://finpay-analytics-production-d748.up.railway.app/
+- **API Base URL:** https://finpay-analytics-production.up.railway.app
+- **API Health Check:** https://finpay-analytics-production.up.railway.app/health
+- **Analytics KPIs:** https://finpay-analytics-production.up.railway.app/kpis
+
+## Technology Stack
+
+- Python
+- FastAPI
+- Streamlit
+- PostgreSQL
+- Railway
+
+## Security
+
+- Production credentials are managed through Railway environment variables.
+- Local `.env` files and database dumps must not be committed to Git.
+- Exposed credentials must be rotated.
+
+
+
 # Architecture
 
 ```text
