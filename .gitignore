@@ -27,3 +27,5 @@ Thumbs.db
 .pytest_cache/
 .coverage
 htmlcov/
+# Local database dump
+finpay_full.sql
