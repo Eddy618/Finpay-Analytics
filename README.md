@@ -57,7 +57,7 @@ See [Setup Instructions](docs/setup.md) for environment configuration, database 
 - [Architecture](docs/architecture.md)
 - [Setup Guide](docs/setup.md)
 - [Data Dictionary](docs/data_dictionary.md)
-- [Testing Guide](docs/testing.md)
+
 
 ## Data Disclaimer
 
