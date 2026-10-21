@@ -1,70 +1,171 @@
-# FinPay Analytics
+FinPay Analytics
+A full-stack financial analytics and transaction intelligence platform built to demonstrate practical skills in SQL, PostgreSQL, Power BI, Python ETL, FastAPI, Streamlit, Docker, and GitHub.
 
-**Payment Transaction Intelligence | Python · PostgreSQL · FastAPI · Streamlit**
+Project Overview
+FinPay Analytics is a simulated fintech analytics platform for monitoring transaction performance, payment channels, payment partners, reconciliation exceptions, data quality, and transaction anomalies.
 
-FinPay Analytics is a financial transaction analytics project designed to transform payment data into actionable business insights. It combines data engineering, database management, transaction monitoring, reconciliation analysis, and API development.
+The project combines a relational PostgreSQL data layer with automated Python ETL, SQL-based analytics, Power BI dashboards, a FastAPI backend, and a Streamlit application.
 
-## Business Problem
+The goal is to demonstrate how raw financial transaction data can be transformed into reliable business intelligence and operational monitoring tools.
 
-Payment businesses need to monitor transaction performance, identify unusual activity, track failed payments, and investigate transactions that have not been reconciled.
+System Architecture
+FinPay Analytics Architecture
 
-FinPay Analytics demonstrates how transaction data can be processed and presented to support these activities.
+The platform follows a layered architecture combining PostgreSQL, Python ETL, SQL analytics, Power BI, FastAPI, Streamlit, and Docker.
 
-## Key Features
+Business Problem
+Financial institutions and payment platforms need visibility into:
 
-- **ETL pipeline:** Extracts transaction data and loads it into PostgreSQL.
-- **Executive KPIs:** Summarises transaction volume, value, and success rates.
-- **Anomaly monitoring:** Identifies transactions flagged by the project's anomaly rules.
-- **Reconciliation analysis:** Highlights transactions requiring reconciliation investigation.
-- **REST API:** Exposes transaction and analytics data through FastAPI.
-- **Automated testing:** Tests application endpoints and core functionality.
+
+## Key Business Insights
+
+- 10,000 transactions were analyzed with total transaction value of approximately ₦1.75B.
+- 5,672 transactions currently have matching settlement records, while 4,328 have no corresponding settlement record in the simulated settlement dataset.
+- 1,599 transactions were flagged by the implemented anomaly-monitoring logic.
+- Core transaction data passed the implemented data-quality checks with no duplicate transaction IDs, missing amounts, invalid amounts, or missing key entity references.
+- The ETL pipeline supports incremental loading and records execution results in the ETL audit log.
+
+## Dashboard Screenshots
+
+### Executive Overview
+
+![Executive Overview](docs/powerbi-executive.png)
+
+### Operations
+
+![Operations Dashboard](docs/powerbi-operations.png)
+
+### Reconciliation
+
+![Reconciliation Dashboard](docs/powerbi-reconciliation.png)
+
+### Risk & Anomalies
+
+![Risk and Anomalies Dashboard](docs/powerbi-risk.png)
+
+### Streamlit Application
+
+![Streamlit Dashboard](docs/streamlit-dashboard.png)
+
+Transaction volume and transaction value
+Successful, failed, pending, and refunded transactions
+Customer and merchant performance
+Payment channel performance
+Payment partner performance
+Settlement and reconciliation exceptions
+Data-quality problems
+Potentially anomalous transactions
+Operational trends over time
+FinPay Analytics addresses these needs through a layered analytics architecture.
+
+Key Results
+The current dataset contains:
+
+10,000 transactions
+Multiple payment channels
+Multiple payment partners
+Customer and merchant dimensions
+Settlement data
+Transaction-level anomaly detection
+Reconciliation analysis
+Automated data-quality validation
+Incremental ETL processing
+The project also identified 1,599 transaction anomalies through the implemented anomaly-monitoring logic.
+
+The current reconciliation dataset contains:
+
+5,672 matched transactions
+4,328 transactions without settlement records
+Note: the settlement exceptions are generated from the simulated settlement dataset and are intended for demonstrating reconciliation workflows rather than representing production financial data.
+
+## Live Deployment
+
+FinPay Analytics is deployed on Railway.
+
+- **Dashboard:** https://finpay-analytics-production-d748.up.railway.app/
+- **API Base URL:** https://finpay-analytics-production.up.railway.app
+- **API Health Check:** https://finpay-analytics-production.up.railway.app/health
+- **Analytics KPIs:** https://finpay-analytics-production.up.railway.app/kpis
 
 ## Technology Stack
 
-- Python — data processing and backend logic
-- PostgreSQL — relational data storage and SQL analytics
-- FastAPI — REST API
-- Streamlit — analytics dashboard
-- pytest — automated testing
-- Docker — containerisation, where configured
+- Python
+- FastAPI
+- Streamlit
+- PostgreSQL
+- Railway
 
-## Architecture
+## Security
 
-1. Transaction data enters the ETL pipeline.
-2. Python processes the data and loads it into PostgreSQL.
-3. SQL queries and views support transaction analysis and KPI calculations.
-4. FastAPI exposes selected data through API endpoints.
-5. The dashboard presents analytics for business users.
+- Production credentials are managed through Railway environment variables.
+- Local `.env` files and database dumps must not be committed to Git.
+- Exposed credentials must be rotated.
 
-## Key Business Questions
 
-- How many transactions were processed?
-- What proportion of transactions succeeded?
-- What is the total transaction value?
-- Which transactions have been flagged as anomalous?
-- Which transactions require reconciliation follow-up?
 
-## Project Validation
+Architecture
+                         ┌──────────────────────┐
+                         │      PostgreSQL      │
+                         │                      │
+                         │ Transactions         │
+                         │ Customers            │
+                         │ Merchants            │
+                         │ Channels             │
+                         │ Partners             │
+                         │ Settlements          │
+                         └──────────┬───────────┘
+                                    │
+                                    ▼
+                         ┌──────────────────────┐
+                         │     Python ETL       │
+                         │                      │
+                         │ Extract              │
+                         │ Validate             │
+                         │ Transform            │
+                         │ Incremental Load     │
+                         │ Audit Logging        │
+                         └──────────┬───────────┘
+                                    │
+                     ┌──────────────┴──────────────┐
+                     │                             │
+                     ▼                             ▼
+             ┌────────────────┐           ┌────────────────┐
+             │   SQL Views    │           │  Analytics DB  │
+             │                │           │                │
+             │ KPIs           │           │ transactions_  │
+             │ Merchant       │           │ analytics      │
+             │ Customer       │           └────────────────┘
+             │ Channel        │
+             │ Partner        │
+             │ Reconciliation │
+             │ Anomalies      │
+             └───────┬────────┘
+                     │
+           ┌─────────┴───────────┐
+           │                     │
+           ▼                     ▼
+   ┌────────────────┐    ┌────────────────┐
+   │   Power BI     │    │    FastAPI     │
+   │                │    │                │
+   │ Executive      │    │ /kpis          │
+   │ Operations     │    │ /transactions  │
+   │ Reconciliation │    │ /anomalies    │
+   │ Risk           │    │ /channels      │
+   └────────────────┘    │ /partners      │
+                         │ /reconciliation│
+                         └───────┬────────┘
+                                 │
+                                 ▼
+                         ┌────────────────┐
+                         │   Streamlit    │
+                         │                │
+                         │ Dashboards     │
+                         │ Filters        │
+                         │ Investigations │
+                         └────────────────┘
 
-Document the actual results of your latest ETL run, automated test suite, and live API checks here. Clearly distinguish local tests from live deployment checks.
-
-## Getting Started
-
-See [Setup Instructions](docs/setup.md) for environment configuration, database setup, installation, and execution commands.
-
-## Project Documentation
-
-- [Architecture](docs/architecture.md)
-- [Setup Guide](docs/setup.md)
-- [Data Dictionary](docs/data_dictionary.md)
-- [Testing Guide](docs/testing.md)
-
-## Data Disclaimer
-
-This project uses simulated financial transaction data for demonstration and educational purposes. It is not a representation of actual customer transactions or a production financial monitoring system.
-
-## Author
-
-**Eddy618**
-
-GitHub: [FinPay Analytics](https://github.com/Eddy618/Finpay-Analytics)
+                         Docker Compose
+                              │
+                     ┌────────┴────────┐
+                     │                 │
+                 FastAPI           Streamlit
